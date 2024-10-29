@@ -1,0 +1,171 @@
+/* General styling for the chat container */
+.chat-container {
+    height: 100%; /* Full height to fill the parent container */
+    background-color: #ffffff;
+    border-radius: 25px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    padding-bottom: 20px;
+    overflow: hidden;
+}
+
+/* Message styling */
+.message {
+    max-width: 60%; /* Limit width to 60% */
+    padding: 5px 15px;
+    border-radius: 20px;
+    line-height: 1.4;
+    word-wrap: break-word;
+    margin-bottom: 8px; /* Add some spacing between bubbles */
+    position: relative; /* Ensure the avatar can be positioned inside this */
+    display: flex;
+    align-items: flex-start; /* Align message text with avatar */
+    left: -45px; /* Adjust to position avatar to the left of the message */
+}
+
+/* Name above the bubble for bot */
+.bot::before {
+    content: attr(data-name); /* Use the data-name attribute to display the bot's name */
+    font-size: 12px; /* Smaller font size for the name */
+    color: white; /* Gray color for the name */
+    position: absolute;
+    top: -22px; /* Increase space between name and bubble */
+    left: 10px; /* Align it with the bubble */
+}
+
+/* Adjust margin for bot messages to prevent overlap with avatar */
+.bot {
+    margin-left: 50px; /* Add margin to the message to make room for avatar */
+    margin-top: 20px; /* Add space between the previous bubble and this one */
+}
+
+.user {
+    background-color: #007bff;
+    color: white;
+    align-self: flex-end;
+    border-bottom-right-radius: 0;
+}
+
+.user {
+    background-color: #007bff;
+    color: white;
+    align-self: flex-end;
+    border-bottom-right-radius: 0;
+}
+
+.bot {
+    background-color: #e5e5ea;
+    color: black;
+    align-self: flex-start;
+    border-bottom-left-radius: 0;
+    margin-left: 50px; /* Add margin to the message to make room for avatar */
+}
+
+/* Avatar styling */
+.avatar-small {
+    width: 48px; /* Adjust as needed for a smaller appearance */
+    height: 48px; /* Same size for a circle */
+    border-radius: 100%; /* This ensures it's always a perfect circle */
+    box-shadow: 0px 1px 4px rgba(0, 0, 0, 0.15); /* Optional: Add a subtle shadow for more visual appeal */
+    position: absolute; /* Position the avatar relative to the message */
+    top: -10px; /* Adjust to move avatar slightly higher */
+    left: -10px; /* Adjust to position avatar to the left of the message */
+}
+
+/* Input container styling */
+.input-container {
+    display: flex;
+    align-items: center;
+    justify-content: space-between; /* Keep input and button aligned */
+    padding: 10px;
+    border-top: 1px solid #e5e5e5;
+    border-radius: 25px; /* Rounded input section */
+    background-color: #f9f9f9;
+    width: calc(100% - 30px); /* Ensure input section fits well within the container, considering padding */
+    margin: 0 auto; /* Center it horizontally */
+    position: relative; /* Relative positioning to stay within chatbox */
+    box-sizing: border-box; /* Ensures padding and borders are included in width/height */
+}
+
+/* Styling for the input field */
+.input-container input {
+    flex: 1;
+    border: none;
+    border-radius: 20px;
+    padding: 10px 15px;
+    background-color: #ffffff;
+    outline: none;
+    margin-right: 10px;
+    box-sizing: border-box; /* Ensures correct sizing */
+}
+
+/* Styling for the send button */
+.send-button {
+    background: none;
+    border: none;
+    outline: none;
+    padding: 0;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.send-button:hover svg {
+    transform: scale(1.1); /* Slight zoom on hover */
+}
+
+.send-button svg {
+    color: #007bff;
+    width: 24px; /* Adjust size */
+    height: 24px;
+}
+
+/* Left panel bot selection styling */
+.bot-selection {
+    display: flex;
+    align-items: center;
+    padding: 10px 0; /* Adds space between rows */
+    margin-bottom: 10px; /* Adds margin between bot rows */
+    min-height: 50px; /* Ensure enough height for the checkbox and avatar */
+}
+
+/* Ensure all avatar images in the left side panel are round and square */
+.bot-selection .avatar {
+    width: 58px;  /* Set the width for square image */
+    height: 58px; /* Set the height for square image */
+    border-radius: 50%; /* Make it round */
+    object-fit: cover; /* Ensure the image fits the square without distortion */
+    margin-right: 10px; /* Space between avatar and checkbox */
+}
+
+/* Ensure small profile pictures (e.g., in message bubbles) are also round and square */
+.avatar-small {
+    width: 58px; /* Adjust as needed for a smaller round avatar */
+    height: 58px; /* Ensure it remains a square */
+    border-radius: 50%; /* Make it round */
+    object-fit: cover; /* Keep the aspect ratio */
+    box-shadow: 0px 1px 4px rgba(0, 0, 0, 0.15); /* Optional shadow for visual appeal */
+}
+
+/* If there are other images, you can make sure they're round by targeting img tags in the app */
+img {
+    border-radius: 50%; /* Make all images round by default */
+    object-fit: cover; /* Ensure the image fits within the square container */
+}
+
+/* Add specific styling for checkboxes */
+.bot-selection .chakra-checkbox {
+    margin-right: 10px; /* Ensure checkbox is spaced from avatar */
+    visibility: visible; /* Always keep the space for the checkbox, even if unchecked */
+    min-width: 24px; /* Ensure checkbox space is always reserved */
+    min-height: 24px;
+}
+
+/* Ensure text is properly displayed */
+.bot-selection .bot-name {
+    font-size: 18px;
+    color: white;
+}
