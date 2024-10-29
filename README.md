@@ -1,3 +1,4 @@
+![App Demo](./demo.png)
 # AI Group Chat
 
 AI Group Chat is an interactive web application that allows users to engage in conversations with multiple AI-powered characters from the Star Wars universe. Users can select which characters they want to chat with and have dynamic, multi-character conversations.
