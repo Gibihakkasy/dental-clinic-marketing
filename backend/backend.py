@@ -1,145 +1,168 @@
+from dotenv import load_dotenv
+load_dotenv()
+
+import os
+import json
+import logging
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List, Dict, Any
-from llama_index.core.llms import ChatMessage
-from llama_index.llms.ollama import Ollama
-from typing import Optional
-import logging
-import json
-import os
+from typing import List, Dict, Any, Optional
+import requests
+import openai
 
-# Get the absolute path of the bots_config.json file relative to this script
+# Optional: import anthropic if available
+try:
+    import anthropic
+except ImportError:
+    anthropic = None
+
+# Load API keys from environment variables
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+CLAUDE_API_KEY = os.getenv("CLAUDE_API_KEY")
+
+# Load agents configuration
 config_path = os.path.join(os.path.dirname(__file__), 'bots_config.json')
-
-# Load bots configuration from external JSON file
 with open(config_path, 'r') as f:
     bot_config = json.load(f)
-    characters = bot_config["characters"]
+    agents = bot_config["agents"]
 
-# Dynamically create bot variables
-bots = []
-for idx, character in enumerate(characters, start=1):
-    bots.append({
-        "name": character['name'],
-        "model": character['model'],
-        "personality": character['personality']
-    })
-
-# Configuration du logging
+# Logging
 logging.basicConfig(level=logging.INFO)
 
 app = FastAPI()
 
-# Définir les origines autorisées pour CORS
 origins = [
-    "http://localhost:3000",  # Origine de l'application React
-    "http://127.0.0.1:3000",  # Variante avec l'adresse IP
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
 ]
 
-# Ajouter le middleware CORS pour permettre les requêtes de l'interface React
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,  # Origines autorisées
+    allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"],  # Autoriser toutes les méthodes (GET, POST, etc.)
-    allow_headers=["*"],  # Autoriser tous les en-têtes
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 @app.get("/bots")
 def get_bots():
-    return bots
-
-async def generate_response(model_name: str, prompt: str) -> str:
-    """
-    Fonction pour générer une réponse à partir d'un modèle Ollama.
-    """
-    try:
-        llm = Ollama(model=model_name, request_timeout=120.0)
-        response = ""
-        # Utiliser un itérable synchronisé
-        for r in llm.stream_chat([ChatMessage(role="user", content=prompt)]):
-            response += r.delta
-        return response.strip()
-
-    except Exception as e:
-        logging.error(f"Erreur avec le modèle {model_name}: {str(e)}")
-        raise e
-
-def build_prompt(bot_name: str, personality: str, conversation_history: List[Dict[str, Any]]) -> str:
-    """
-    Build a prompt for the bot using the full conversation history and its personality.
-    """
-    prompt = f"You are {bot_name}, {personality}.\n"
-
-    for message in conversation_history:
-        if 'speaker' in message and 'text' in message:
-            speaker = message['speaker']
-            text = message['text']
-            prompt += f"{speaker} says: '{text}'\n"
-
-    prompt += "Respond without using asterisks to indicate actions or non-verbal cues, and in a way that stays true to your personality and reflects a realistic, dynamic conversation as if you were participating in a casual group chat."
-    return prompt
-
-
+    # For compatibility with frontend, return agents as bots
+    return [{"name": agent["name"], "role": agent["role"]} for agent in agents]
 
 class Message(BaseModel):
     text: str
     conversation_history: List[Dict[str, Any]]
-    active_bots: Optional[List[str]] = None  # New field for active bots
+    active_bots: Optional[List[str]] = None
 
+# Unified LLM call
+async def call_llm(agent, prompt: str) -> str:
+    provider = agent.get("provider")
+    model = agent.get("model")
+    if provider == "ollama":
+        # Import Ollama only if needed
+        try:
+            from llama_index.core.llms import ChatMessage
+            from llama_index.llms.ollama import Ollama
+        except ImportError:
+            raise Exception("llama_index is not installed. Please install it for Ollama support.")
+        llm = Ollama(model=model, request_timeout=120.0)
+        response = ""
+        for r in llm.stream_chat([ChatMessage(role="user", content=prompt)]):
+            response += r.delta
+        return response.strip()
+    elif provider == "openai":
+        if not OPENAI_API_KEY:
+            raise Exception("OPENAI_API_KEY not set")
+        client = openai.OpenAI(api_key=OPENAI_API_KEY)
+        if agent["name"] == "Research Agent":
+            response = client.responses.create(
+                model=model,
+                input=prompt,
+                tools=[{"type": "web_search"}]
+            )
+            return response.output_text
+        else:
+            response = client.responses.create(
+                model=model,
+                input=prompt
+            )
+            return response.output_text
+    elif provider == "claude":
+        if not CLAUDE_API_KEY:
+            raise Exception("CLAUDE_API_KEY not set")
+        if anthropic is None:
+            raise Exception("anthropic package not installed")
+        client = anthropic.Anthropic(api_key=CLAUDE_API_KEY)
+        response = client.messages.create(
+            model=model,
+            max_tokens=800,
+            temperature=0.7,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        # Use getattr to avoid attribute errors
+        content = getattr(response, 'content', None)
+        if content and isinstance(content, list) and hasattr(content[0], 'text'):
+            return content[0].text.strip()
+        completion = getattr(response, 'completion', None)
+        if completion:
+            return completion.strip()
+        return str(response)
+    else:
+        raise Exception(f"Unknown provider: {provider}")
+
+def build_prompt(agent, conversation_history: List[Dict[str, Any]], user_message: str) -> str:
+    # Custom prompt for each agent
+    if agent["name"] == "Research Agent":
+        prompt = (
+            f"You are a research assistant for a dental clinic's marketing team. "
+            f"Your job is to research dental care trends, viral posts, studies, research, or any content in social media. The goal is content that is engaging for potential dental patients. So exclude industry specific information that only interesting for the practitioner."
+            f"Always include the source URL for each finding.\n"
+        )
+        for message in conversation_history:
+            if message.get("speaker") == "User":
+                prompt += f"User says: '{message['text']}'\n"
+        prompt += f"User says: '{user_message}'\n"
+        prompt += "Provide a list of 4-5 findings, each with a brief description and a source URL."
+        return prompt
+    elif agent["name"] == "Planner Agent":
+        prompt = (
+            f"You are a social media planner for a dental clinic's marketing team."
+            f"Your job is to take the Research Agent’s results and creates a detailed Instagram content plan for the upcoming week."
+            f"For each post, it includes: the scheduled date, a highly engaging caption tailored for Instagram, a matching image prompt that focuses on realistic Indonesian visuals, and an explanation for the user that connects the post idea back to the original research—helping the user understand the inspiration behind each post.\n"
+        )
+        for message in conversation_history:
+            if message.get("speaker") == "Research Agent":
+                prompt += f"Research Agent found: {message['text']}\n"
+        prompt += f"User says: '{user_message}'\n"
+        prompt += "Create a plan for 1-2 Instagram posts based on the research above."
+        return prompt
+    else:
+        # Fallback
+        return user_message
 
 @app.post("/chat")
 async def chat(message: Message):
     try:
         user_message = message.text
         conversation_history = message.conversation_history or []
-        active_bots = message.active_bots or [bot['name'] for bot in bots]  # Default to all bots if none specified
-
-        # Log the received conversation history
-        logging.info(f"Conversation history received: {conversation_history}")
-
-        # **Ensure we add the user's message only once**
-        valid_conversation_history = [
-            msg for msg in conversation_history
-            if isinstance(msg, dict) and "speaker" in msg and "text" in msg
-        ]
-
-        # Append the user's message to the conversation history **only once** 
-        if not valid_conversation_history or valid_conversation_history[-1]["speaker"] != "User":
-            valid_conversation_history.append({"speaker": "User", "text": user_message})
-
+        active_bots = message.active_bots or [agent['name'] for agent in agents]
         responses = []
         bot_responses = []
-
-        for bot in bots:
-            if bot['name'] not in active_bots:
+        for agent in agents:
+            if agent['name'] not in active_bots:
                 continue
-
-            bot_name = bot['name']
-            model_name = bot['model']
-            personality = bot['personality']
-
-            prompt = build_prompt(bot_name, personality, valid_conversation_history)
-            logging.info(f"Prompt generated for {bot_name}: {prompt}")
-            bot_response = await generate_response(model_name, prompt)
-
-            bot_responses.append({'speaker': bot_name, 'text': bot_response})
+            prompt = build_prompt(agent, conversation_history, user_message)
+            logging.info(f"Prompt for {agent['name']}: {prompt}")
+            bot_response = await call_llm(agent, prompt)
+            bot_responses.append({'speaker': agent['name'], 'text': bot_response})
             responses.append({
-                "bot": bot_name,
+                "bot": agent['name'],
                 "response": bot_response
             })
-
-        # Update conversation history with bot responses
-        valid_conversation_history.extend(bot_responses)
-
-        # Return responses and updated conversation history if needed
-        return {
-            "responses": responses,
-            # Optionally return the updated conversation history
-            # "conversation_history": valid_conversation_history
-        }
-
+        # Optionally update conversation history
+        conversation_history.extend(bot_responses)
+        return {"responses": responses}
     except Exception as e:
         logging.error(f"Error processing the request: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")

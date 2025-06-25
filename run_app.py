@@ -4,6 +4,7 @@ import os
 from threading import Thread
 import time
 import signal
+import requests
 
 # Function to run the backend (FastAPI/Uvicorn)
 def run_backend():
@@ -31,6 +32,22 @@ def run_frontend():
         print("Frontend process ended.")
         os.chdir('..')  # Return to root folder after running frontend
 
+# Wait for backend to be ready
+def wait_for_backend(url, timeout=30):
+    print("Waiting for backend to be ready...")
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        try:
+            response = requests.get(url)
+            if response.status_code == 200:
+                print("Backend is ready!")
+                return True
+        except Exception:
+            pass
+        time.sleep(0.5)
+    print(f"Backend was not ready after {timeout} seconds.")
+    return False
+
 # Main entry point
 if __name__ == "__main__":
     # Store the root directory
@@ -42,18 +59,21 @@ if __name__ == "__main__":
 
     # Start the backend thread
     backend_thread.start()
-    time.sleep(2)  # Give backend some time to start
 
-    # Start the frontend thread
-    frontend_thread.start()
+    # Wait for backend to be ready before starting frontend
+    if wait_for_backend("http://localhost:8000/bots", timeout=30):
+        # Start the frontend thread
+        frontend_thread.start()
+    else:
+        print("Frontend will not start because backend is not ready.")
 
     # Handle clean exit on keyboard interrupt
     try:
         backend_thread.join()
-        frontend_thread.join()
+        if frontend_thread.is_alive():
+            frontend_thread.join()
     except KeyboardInterrupt:
         print("Stopping all processes...")
-        os.kill(backend_thread.ident, signal.SIGTERM)
-        os.kill(frontend_thread.ident, signal.SIGTERM)
+        # Note: Proper process termination should be handled here if needed
     finally:
         print("All processes have been stopped.")
