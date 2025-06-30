@@ -10,26 +10,65 @@ from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 import requests
 import openai
+from bs4 import BeautifulSoup
+import feedparser
+import datetime
+from docx import Document
+from fastapi.responses import FileResponse
 
-# Optional: import anthropic if available
-try:
-    import anthropic
-except ImportError:
-    anthropic = None
+# Dental news fetching utilities (inlined from fetch_news.py)
+import feedparser
+import datetime
 
-# Load API keys from environment variables
+# Load API key
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-CLAUDE_API_KEY = os.getenv("CLAUDE_API_KEY")
 
-# Load agents configuration
-config_path = os.path.join(os.path.dirname(__file__), 'bots_config.json')
-with open(config_path, 'r') as f:
-    bot_config = json.load(f)
-    agents = bot_config["agents"]
+# Social Media Planner agent config
+AGENT = {
+    "name": "Social Media Planner",
+    "provider": "openai",
+    "model": "gpt-4.1"
+}
 
-# Logging
-logging.basicConfig(level=logging.INFO)
+# RSS feeds
+RSS_FEEDS = [
+    "http://www.agd.org/myagd/subscriptions/rss/kyt_hottopics.xml",
+    "http://www.agd.org/myagd/subscriptions/rss/kyt_factoidweek.xml",
+    "http://www.agd.org/myagd/subscriptions/rss/kyt_quiz.xml"
+]
 
+def extract_article_text(url: str, max_paragraphs: int = 5) -> str:
+    try:
+        resp = requests.get(url, timeout=5)
+        soup = BeautifulSoup(resp.text, "html.parser")
+        paragraphs = soup.find_all("p")
+        return " ".join(p.get_text().strip() for p in paragraphs[:max_paragraphs])
+    except Exception:
+        return ""
+
+def fetch_rss_news():
+    entries = []
+    for url in RSS_FEEDS:
+        feed = feedparser.parse(url)
+        for entry in feed.entries:
+            published = None
+            if hasattr(entry, 'published_parsed') and entry.published_parsed and isinstance(entry.published_parsed, tuple):
+                try:
+                    published = datetime.datetime(*entry.published_parsed[:6])
+                except Exception:
+                    published = datetime.datetime.now()
+            else:
+                published = datetime.datetime.now()
+            entries.append({
+                "title": entry.get("title"),
+                "link": entry.get("link"),
+                "published": published
+            })
+    sorted_entries = sorted(entries, key=lambda x: x["published"], reverse=True)
+    latest = sorted_entries[:5]
+    return [{"title": e["title"], "link": e["link"]} for e in latest]
+
+# FastAPI app setup
 app = FastAPI()
 
 origins = [
@@ -45,124 +84,99 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+class SummarizeRequest(BaseModel):
+    user_message: Optional[str] = None
+
 @app.get("/bots")
 def get_bots():
-    # For compatibility with frontend, return agents as bots
-    return [{"name": agent["name"], "role": agent["role"]} for agent in agents]
+    return [{"name": AGENT["name"], "role": "Creates Instagram content plan from latest dental news."}]
 
-class Message(BaseModel):
-    text: str
-    conversation_history: List[Dict[str, Any]]
-    active_bots: Optional[List[str]] = None
-
-# Unified LLM call
-async def call_llm(agent, prompt: str) -> str:
-    provider = agent.get("provider")
-    model = agent.get("model")
-    if provider == "ollama":
-        # Import Ollama only if needed
-        try:
-            from llama_index.core.llms import ChatMessage
-            from llama_index.llms.ollama import Ollama
-        except ImportError:
-            raise Exception("llama_index is not installed. Please install it for Ollama support.")
-        llm = Ollama(model=model, request_timeout=120.0)
-        response = ""
-        for r in llm.stream_chat([ChatMessage(role="user", content=prompt)]):
-            response += r.delta
-        return response.strip()
-    elif provider == "openai":
+@app.post("/generate_social_plan")
+async def generate_social_plan(request: SummarizeRequest):
+    try:
         if not OPENAI_API_KEY:
             raise Exception("OPENAI_API_KEY not set")
         client = openai.OpenAI(api_key=OPENAI_API_KEY)
-        if agent["name"] == "Research Agent":
-            response = client.responses.create(
-                model=model,
-                input=prompt,
+        rss_items = fetch_rss_news()
+        summaries = []
+        for item in rss_items:
+            article_text = extract_article_text(item["link"])
+            summary_prompt = (
+                f"Summarize the following dental news article for dentists audience in Bahasa Indonesia.\n"
+                f"Title: {item['title']}\n"
+                f"URL: {item['link']}\n"
+                f"Content: {article_text}\n"
+                f"Return a concise summary."
+            )
+            # Use OpenAI response API with web search tools for richer summaries
+            summary_resp = client.responses.create(
+                model=AGENT["model"],
+                input=summary_prompt,
                 tools=[{"type": "web_search"}]
             )
-            return response.output_text
-        else:
-            response = client.responses.create(
-                model=model,
-                input=prompt
-            )
-            return response.output_text
-    elif provider == "claude":
-        if not CLAUDE_API_KEY:
-            raise Exception("CLAUDE_API_KEY not set")
-        if anthropic is None:
-            raise Exception("anthropic package not installed")
-        client = anthropic.Anthropic(api_key=CLAUDE_API_KEY)
-        response = client.messages.create(
-            model=model,
-            max_tokens=800,
-            temperature=0.7,
-            messages=[{"role": "user", "content": prompt}]
-        )
-        # Use getattr to avoid attribute errors
-        content = getattr(response, 'content', None)
-        if content and isinstance(content, list) and hasattr(content[0], 'text'):
-            return content[0].text.strip()
-        completion = getattr(response, 'completion', None)
-        if completion:
-            return completion.strip()
-        return str(response)
-    else:
-        raise Exception(f"Unknown provider: {provider}")
-
-def build_prompt(agent, conversation_history: List[Dict[str, Any]], user_message: str) -> str:
-    # Custom prompt for each agent
-    if agent["name"] == "Research Agent":
-        prompt = (
-            f"You are a research assistant for a dental clinic's marketing team. "
-            f"Your job is to research dental care trends, viral posts, studies, research, or any content in social media. The goal is content that is engaging for potential dental patients. So exclude industry specific information that only interesting for the practitioner."
-            f"Always include the source URL for each finding.\n"
-        )
-        for message in conversation_history:
-            if message.get("speaker") == "User":
-                prompt += f"User says: '{message['text']}'\n"
-        prompt += f"User says: '{user_message}'\n"
-        prompt += "Provide a list of 4-5 findings, each with a brief description and a source URL."
-        return prompt
-    elif agent["name"] == "Planner Agent":
-        prompt = (
-            f"You are a social media planner for a dental clinic's marketing team."
-            f"Your job is to take the Research Agent’s results and creates a detailed Instagram content plan for the upcoming week."
-            f"For each post, it includes: the scheduled date, a highly engaging caption tailored for Instagram, a matching image prompt that focuses on realistic Indonesian visuals, and an explanation for the user that connects the post idea back to the original research—helping the user understand the inspiration behind each post.\n"
-        )
-        for message in conversation_history:
-            if message.get("speaker") == "Research Agent":
-                prompt += f"Research Agent found: {message['text']}\n"
-        prompt += f"User says: '{user_message}'\n"
-        prompt += "Create a plan for 1-2 Instagram posts based on the research above."
-        return prompt
-    else:
-        # Fallback
-        return user_message
-
-@app.post("/chat")
-async def chat(message: Message):
-    try:
-        user_message = message.text
-        conversation_history = message.conversation_history or []
-        active_bots = message.active_bots or [agent['name'] for agent in agents]
-        responses = []
-        bot_responses = []
-        for agent in agents:
-            if agent['name'] not in active_bots:
-                continue
-            prompt = build_prompt(agent, conversation_history, user_message)
-            logging.info(f"Prompt for {agent['name']}: {prompt}")
-            bot_response = await call_llm(agent, prompt)
-            bot_responses.append({'speaker': agent['name'], 'text': bot_response})
-            responses.append({
-                "bot": agent['name'],
-                "response": bot_response
+            summary = getattr(summary_resp, 'output_text', None)
+            if summary:
+                summary = summary.strip()
+            else:
+                summary = "(No summary returned)"
+            summaries.append({
+                "title": item["title"],
+                "url": item["link"],
+                "summary": summary
             })
-        # Optionally update conversation history
-        conversation_history.extend(bot_responses)
-        return {"responses": responses}
+        now = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        doc_filename = f"social_plan_{now}.docx"
+        # Ensure the 'documents' directory exists at project root
+        documents_dir = os.path.join(os.getcwd(), "documents")
+        os.makedirs(documents_dir, exist_ok=True)
+        doc_path = os.path.join(documents_dir, doc_filename)
+        doc = Document()
+        doc.add_heading("Dental Clinic Social Media Content Plan", 0)
+        doc.add_paragraph(f"Generated: {now}")
+        for idx, item in enumerate(summaries, 1):
+            doc.add_heading(f"{idx}. {item['title']}", level=1)
+            doc.add_paragraph(f"URL: {item['url']}")
+            doc.add_paragraph(f"Summary: {item['summary']}")
+            caption_prompt = (
+                f"Given this summary of a dental news article, write a highly engaging Instagram caption for a dental clinic's patients in BahasaIndonesia.\n"
+                f"Summary: {item['summary']}\n"
+                f"Caption:"
+            )
+            caption_resp = client.chat.completions.create(
+                model=AGENT["model"],
+                messages=[{"role": "user", "content": caption_prompt}]
+            )
+            caption = getattr(caption_resp.choices[0].message, 'content', None)
+            if caption:
+                caption = caption.strip()
+            else:
+                caption = "(No caption returned)"
+            image_prompt_prompt = (
+                f"Given this summary, write a prompt for an image generation AI to create an image for a dental clinic instagram post. The audience is potential patient of an Indonesian dental clinic.\n"
+                f"Summary: {item['summary']}\n"
+                f"Image Prompt:"
+            )
+            image_prompt_resp = client.chat.completions.create(
+                model=AGENT["model"],
+                messages=[{"role": "user", "content": image_prompt_prompt}]
+            )
+            image_prompt = getattr(image_prompt_resp.choices[0].message, 'content', None)
+            if image_prompt:
+                image_prompt = image_prompt.strip()
+            else:
+                image_prompt = "(No image prompt returned)"
+            doc.add_heading("Instagram Content", level=2)
+            doc.add_paragraph(f"Caption: {caption}")
+            doc.add_paragraph(f"Image Prompt: {image_prompt}")
+        doc.save(doc_path)
+        return {"file": doc_filename}
     except Exception as e:
-        logging.error(f"Error processing the request: {str(e)}")
+        logging.error(f"Error generating social plan: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+@app.get("/download/{filename}")
+def download_file(filename: str):
+    file_path = os.path.join("backend", filename)
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="File not found")
+    return FileResponse(file_path, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document", filename=filename)
