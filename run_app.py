@@ -12,7 +12,7 @@ def run_backend():
     try:
         # Run the backend using Uvicorn in a separate process, accessible on all interfaces
         backend_process = subprocess.Popen([
-            sys.executable, "-m", "uvicorn", "backend.backend:app", "--reload", "--host", "0.0.0.0", "--port", "8000"
+            sys.executable, "-m", "uvicorn", "backend.main:app", "--reload", "--host", "0.0.0.0", "--port", "8000"
         ])
         backend_process.wait()
     except FileNotFoundError:
