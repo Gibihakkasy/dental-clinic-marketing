@@ -8,3 +8,7 @@ feedparser
 beautifulsoup4
 python-docx
 openai
+python-dotenv
+python-instagram
+requests-oauthlib
+python-multipart

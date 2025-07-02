@@ -5,11 +5,13 @@ AI Group Chat is an interactive web application that allows users to engage in c
 
 ## Features
 
-- Chat with multiple AI characters simultaneously
-- Dynamic character selection
-- Real-time conversation updates
-- Responsive design for various screen sizes
-- Character-specific avatars and personalities
+- Generate social media content from RSS feeds
+- AI-powered article summarization
+- Automatic caption generation for social media
+- Image prompt generation for visual content
+- Edit and customize generated captions
+- Post directly to Instagram (with proper credentials)
+- Download content as Word documents
 
 ## Technologies Used
 
@@ -17,10 +19,14 @@ AI Group Chat is an interactive web application that allows users to engage in c
   - **React**: JavaScript library for building user interfaces
   - **Chakra UI**: Component library for accessible and responsive design
   - **Axios**: HTTP client for API calls
+  - **React Icons**: For beautiful icons
+
 - **Backend**:
   - **FastAPI**: Web framework for building APIs with Python
   - **Ollama**: For AI model integration (currently macOS only)
   - **llama_index**: LLM toolkit for managing local large language models
+  - **python-docx**: For generating Word documents
+  - **python-dotenv**: For managing environment variables
 
 ## Project Structure
 
@@ -36,6 +42,7 @@ The project is divided into two main parts:
 - **Node.js** (14 or higher) and **npm**
 - **Python 3.7+**
 - **Ollama** (for running AI models locally on macOS)
+- **Instagram Business Account** (for Instagram posting functionality)
 
 ### Backend Setup
 
@@ -52,6 +59,29 @@ The project is divided into two main parts:
    pip install -r requirements.txt
    ```
    *Ensure that `requirements.txt` includes all necessary packages, especially `fastapi`, `uvicorn`, `pydantic`, and `llama_index`.*
+
+### Environment Variables
+
+1. Copy the `.env.example` file to `.env` and update the values as needed:
+   ```bash
+   cp .env.example .env
+   ```
+2. Edit the `.env` file and add your API keys and configuration.
+
+#### Instagram Setup
+
+To enable Instagram posting functionality:
+
+1. Create a Facebook Developer account at [developers.facebook.com](https://developers.facebook.com/)
+2. Create a new app and add Instagram Basic Display API
+3. Get your Instagram Access Token and Business Account ID
+4. Add these to your `.env` file:
+   ```
+   INSTAGRAM_ACCESS_TOKEN=your_access_token_here
+   INSTAGRAM_BUSINESS_ACCOUNT_ID=your_business_account_id_here
+   ```
+
+> **Note**: The Instagram Graph API requires a Business or Creator account with the appropriate permissions.
 
 ### Frontend Setup
 
@@ -76,10 +106,17 @@ This script will start both the FastAPI backend server and the React frontend de
 
 ## Usage
 
-1. Open your web browser and go to `http://localhost:3000`.
-2. Select the AI characters you want to chat with using the checkboxes on the left panel.
-3. Type your message in the input field at the bottom and press Enter or click the send button.
-4. The AI characters will respond based on their unique personalities and the conversation context.
+1. **Fetch Articles**: The app will automatically fetch the latest articles from configured RSS feeds
+2. **Select Content**: Choose which articles you want to generate content for
+3. **Generate Content**: Click "Generate Plan" to create summaries, captions, and image prompts
+4. **Edit & Customize**:
+   - Edit any generated caption by clicking the text area
+   - Click "Save Changes" to update your edits
+5. **Post to Instagram**:
+   - Select captions you want to post using the checkboxes
+   - Click "Post to Instagram" to post directly to your connected account
+   - Or use the bulk post modal to post multiple items at once
+6. **Download**: Download all generated content as a Word document
 
 ## Customizing AI Characters
 
