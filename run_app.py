@@ -10,8 +10,10 @@ import requests
 def run_backend():
     print("Starting backend...")
     try:
-        # Run the backend using Uvicorn in a separate process
-        backend_process = subprocess.Popen([sys.executable, "-m", "uvicorn", "backend.backend:app", "--reload", "--port", "8000"])
+        # Run the backend using Uvicorn in a separate process, accessible on all interfaces
+        backend_process = subprocess.Popen([
+            sys.executable, "-m", "uvicorn", "backend.backend:app", "--reload", "--host", "0.0.0.0", "--port", "8000"
+        ])
         backend_process.wait()
     except FileNotFoundError:
         print("Error: 'uvicorn' not found. Make sure it's installed and in your PATH.")
@@ -23,8 +25,9 @@ def run_frontend():
     print("Starting frontend...")
     os.chdir('frontend')  # Navigate to the React app folder
     try:
-        # Run the frontend using npm in a separate process
-        frontend_process = subprocess.Popen(["npm", "start"])
+        # Run the frontend using npm in a separate process, accessible on all interfaces
+        # If your React app supports HOST env var, this will work:
+        frontend_process = subprocess.Popen(["npm", "start"], env={**os.environ, "HOST": "0.0.0.0"})
         frontend_process.wait()
     except FileNotFoundError:
         print("Error: 'npm' not found. Make sure Node.js and npm are installed and in your PATH.")
