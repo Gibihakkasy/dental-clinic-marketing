@@ -10,9 +10,14 @@ import requests
 def run_backend():
     print("Starting backend...")
     try:
-        # Run the backend using Uvicorn in a separate process, accessible on all interfaces
+        # Determine the correct path to the venv python executable
+        venv_python = os.path.join('venv', 'bin', 'python')
+        if sys.platform == "win32":
+            venv_python = os.path.join('venv', 'Scripts', 'python.exe')
+
+        # Run the backend using the venv's python
         backend_process = subprocess.Popen([
-            sys.executable, "-m", "uvicorn", "backend.main:app", "--reload", "--host", "0.0.0.0", "--port", "8000"
+            venv_python, "-m", "uvicorn", "backend.main:app", "--reload", "--host", "0.0.0.0", "--port", "8000"
         ])
         backend_process.wait()
     except FileNotFoundError:

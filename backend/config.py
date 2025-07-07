@@ -14,7 +14,8 @@ INSTAGRAM_BUSINESS_ACCOUNT_ID = os.getenv("INSTAGRAM_BUSINESS_ACCOUNT_ID")  # Yo
 # Model constants
 SUMMARIZE_MODEL = "gpt-4o"
 CAPTION_MODEL = "gpt-4.1-nano"
-IMAGE_MODEL = "gpt-4.1-nano"
+IMAGE_PROMPT_MODEL = "gpt-4.1-nano"
+IMAGE_GENERATION_MODEL = "gpt-image-1"
 
 # Social Media Planner agent config
 AGENT = {

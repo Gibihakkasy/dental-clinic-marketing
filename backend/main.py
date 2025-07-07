@@ -1,22 +1,25 @@
 import os
 import logging
 import time
+import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime
 from typing import Dict, Any, List, Optional, Tuple
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+
+from fastapi import FastAPI, HTTPException, BackgroundTasks, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 # Import our modules
-from .db.cache import cache
+from .db.cache import cache, get_topic_key
 
-# Import our modules
-from .config import AGENT, CORS_ORIGINS, logger
+from .config import AGENT, CORS_ORIGINS, logger, INSTAGRAM_ACCESS_TOKEN
 from .rss.fetcher import fetch_grouped_rss_news, fetch_unique_rss_news
 from .agents.summarizer import generate_summary
 from .agents.captioner import generate_caption
-from .agents.image_prompter import generate_image_prompt
+from .agents.image_prompter import generate_image_prompt, generate_image_from_prompt
+from .utils.cloudinary import upload_to_cloudinary
 from .utils.doc_writer import generate_word_document
 from .config import INSTAGRAM_ACCESS_TOKEN  # Add this to your config.py
 
@@ -37,6 +40,54 @@ class SummarizeRequest(BaseModel):
 class InstagramPostRequest(BaseModel):
     caption: str
     article: Dict[str, str]
+
+class TopicRequest(BaseModel):
+    topic: str = Field(..., description="The topic to generate content for")
+
+class TopicResponse(BaseModel):
+    id: str
+    topic: str
+    summary: str
+    caption: str
+    image_prompt: str
+    sources: List[str]
+    created_at: float
+
+class TopicListItem(BaseModel):
+    id: str
+    topic: str
+    preview: str
+    created_at: float
+
+class ImageGenerationRequest(BaseModel):
+    prompt: str
+    force_regenerate: bool = False
+
+@app.post("/generate_image_gpt")
+def generate_image_gpt(request: ImageGenerationRequest):
+    """
+    Generate an image using GPT-image-1 (DALL-E), cache by prompt, upload to Cloudinary, and return the Cloudinary URL.
+    If force_regenerate is True, always generate a new image and update the cache.
+    """
+    try:
+        cache_key = f"image_gpt:{request.prompt.strip()}"
+        from_cache = False
+        # Check cache unless force_regenerate
+        if not request.force_regenerate:
+            cached_url = cache.get(cache_key)
+            if cached_url:
+                return {"image_url": cached_url, "from_cache": True}
+        # Generate image
+        image_path = generate_image_from_prompt(request.prompt)
+        # Upload to Cloudinary
+        public_id = f"dental_gptimg_{uuid.uuid4().hex}"
+        image_url = upload_to_cloudinary(image_path, public_id=public_id)
+        # Update cache
+        cache.set(cache_key, image_url)
+        return {"image_url": image_url, "from_cache": False}
+    except Exception as e:
+        logger.error(f"Error in generate_image_gpt: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 def _process_article_content(article: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, bool]]:
     """
@@ -82,16 +133,24 @@ def _process_article_content(article: Dict[str, Any]) -> Tuple[Dict[str, Any], D
         article['caption'] = caption
         article['imagePrompt'] = image_prompt
         
-        # Save to cache
-        cache.save_article({
-            'title': article['title'],
-            'link': article['link'],
-            'summary': summary,
-            'caption': caption,
-            'image_prompt': image_prompt
-        })
-        
-        logger.info(f"Successfully processed and cached article: {article['title']}")
+        # Only save to cache if all generations are successful
+        error_placeholders = ["(Processing failed)", "(Caption generation failed)", "(Image prompt generation failed)"]
+        if (
+            summary not in error_placeholders and
+            caption not in error_placeholders and
+            image_prompt not in error_placeholders and
+            summary.strip() != "" and caption.strip() != "" and image_prompt.strip() != ""
+        ):
+            cache.save_article({
+                'title': article['title'],
+                'link': article['link'],
+                'summary': summary,
+                'caption': caption,
+                'image_prompt': image_prompt
+            })
+            logger.info(f"Successfully processed and cached article: {article['title']}")
+        else:
+            logger.warning(f"Not caching article {article['title']} due to failed generation(s)")
         return article, {
             'summary': False,
             'caption': False,
@@ -115,6 +174,46 @@ def get_bots():
     """Get available bots/agents."""
     return [{"name": AGENT["name"], "role": "Creates Instagram content plan from latest dental news."}]
 
+@app.post("/regenerate_summary")
+async def regenerate_summary(request: dict):
+    """Regenerate summary for an article or topic."""
+    try:
+        if 'article_link' in request:
+            # Article summary regeneration
+            article_link = request['article_link']
+            article = cache.get_article(article_link)
+            if not article:
+                raise HTTPException(status_code=404, detail="Article not found in cache")
+            new_summary = generate_summary(article['title'], article['link'])
+            # Only update cache if summary is successful
+            if new_summary and new_summary.strip() != "" and new_summary != "(Processing failed)":
+                article['summary'] = new_summary
+                cache.save_article(article)
+                cache_status = True
+            else:
+                cache_status = False
+            return {"summary": new_summary, "cache_status": cache_status}
+        elif 'topic_id' in request:
+            # Topic summary regeneration
+            topic_id = request['topic_id']
+            topic = cache.get_topic(topic_id)
+            if not topic:
+                raise HTTPException(status_code=404, detail="Topic not found in cache")
+            new_summary = generate_summary(topic['topic'], topic['topic'])
+            # Only update cache if summary is successful
+            if new_summary and new_summary.strip() != "" and new_summary != "(Processing failed)":
+                topic['summary'] = new_summary
+                cache.save_topic(topic)
+                cache_status = True
+            else:
+                cache_status = False
+            return {"summary": new_summary, "cache_status": cache_status}
+        else:
+            raise HTTPException(status_code=400, detail="Must provide article_link or topic_id")
+    except Exception as e:
+        logger.error(f"Error regenerating summary: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error regenerating summary: {str(e)}")
+
 @app.post("/regenerate_caption")
 async def regenerate_caption(request: dict):
     """Regenerate caption for an article."""
@@ -131,11 +230,14 @@ async def regenerate_caption(request: dict):
         # Generate new caption
         new_caption = generate_caption(article['summary'])
         
-        # Update cache
-        article['caption'] = new_caption
-        cache.save_article(article)
-        
-        return {"caption": new_caption}
+        # Only update cache if caption is successful
+        if new_caption and new_caption.strip() != "" and new_caption != "(Caption generation failed)":
+            article['caption'] = new_caption
+            cache.save_article(article)
+            cache_status = True
+        else:
+            cache_status = False
+        return {"caption": new_caption, "cache_status": cache_status}
         
     except Exception as e:
         logger.error(f"Error regenerating caption: {str(e)}")
@@ -290,6 +392,174 @@ async def post_to_instagram(request: InstagramPostRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/get_rss_articles_grouped")
-def get_rss_articles_grouped():
+async def get_rss_articles_grouped():
     """Get RSS articles grouped by feed."""
-    return fetch_grouped_rss_news() 
+    return fetch_grouped_rss_news()
+
+# Topic Management Endpoints
+
+@app.post("/topics/generate", status_code=status.HTTP_202_ACCEPTED)
+async def generate_from_topic(request: TopicRequest, background_tasks: BackgroundTasks):
+    """
+    Start generating content for a new topic.
+    Returns a generation ID that can be used to check progress.
+    """
+    try:
+        generation_id = str(uuid.uuid4())
+        
+        # Start background task
+        background_tasks.add_task(
+            _process_topic_generation,
+            topic=request.topic,
+            generation_id=generation_id
+        )
+        
+        return {
+            "status": "started", 
+            "generation_id": generation_id,
+            "message": "Topic generation started. Use the generation_id to check progress."
+        }
+    except Exception as e:
+        logger.error(f"Error starting topic generation: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/topics", response_model=List[TopicListItem])
+async def list_topics(limit: int = 100, offset: int = 0):
+    """List all cached topics with pagination."""
+    try:
+        return cache.list_topics(limit=limit, offset=offset)
+    except Exception as e:
+        logger.error(f"Error listing topics: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/topics/{topic_id}", response_model=TopicResponse)
+async def get_topic(topic_id: str):
+    """Get details of a specific topic by ID."""
+    try:
+        topic = cache.get_topic(topic_id)
+        if not topic:
+            raise HTTPException(status_code=404, detail="Topic not found")
+        return topic
+    except Exception as e:
+        logger.error(f"Error getting topic {topic_id}: {str(e)}")
+        if "not found" in str(e).lower():
+            raise HTTPException(status_code=404, detail="Topic not found")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/topics/{topic_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_topic(topic_id: str):
+    """Delete a topic by ID."""
+    try:
+        if not topic_id.startswith("topic_"):
+            raise HTTPException(status_code=400, detail="Invalid topic ID format")
+            
+        if not cache.delete_topic(topic_id):
+            raise HTTPException(status_code=404, detail="Topic not found")
+            
+        return None
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting topic {topic_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/topics/{generation_id}/status")
+async def check_generation_status(generation_id: str):
+    """Check the status of a topic generation task."""
+    try:
+        # Try to get the final result first
+        result = cache.get(f"result_{generation_id}")
+        if result:
+            return result
+            
+        # If no result yet, check progress
+        progress = cache.get(f"progress_{generation_id}")
+        if progress:
+            return progress
+            
+        raise HTTPException(status_code=404, detail="Generation ID not found")
+    except Exception as e:
+        logger.error(f"Error checking generation status {generation_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Background task for processing topic generation
+async def _process_topic_generation(topic: str, generation_id: str):
+    """Background task to generate content for a topic."""
+    try:
+        # Update progress
+        cache.set(f"progress_{generation_id}", {
+            "status": "searching",
+            "topic": topic,
+            "timestamp": time.time()
+        })
+        
+        # Step 1: Search and summarize the topic
+        summary = await _search_and_summarize_topic(topic)
+        
+        # Step 2: Generate caption
+        cache.set(f"progress_{generation_id}", {
+            "status": "generating_caption",
+            "topic": topic,
+            "summary": summary,
+            "timestamp": time.time()
+        })
+        caption = generate_caption(summary)
+        
+        # Step 3: Generate image prompt
+        cache.set(f"progress_{generation_id}", {
+            "status": "generating_image_prompt",
+            "topic": topic,
+            "summary": summary,
+            "caption": caption,
+            "timestamp": time.time()
+        })
+        image_prompt = generate_image_prompt(summary)
+        
+        # Save the final result
+        topic_data = {
+            "id": get_topic_key(topic),
+            "topic": topic,
+            "summary": summary,
+            "caption": caption,
+            "image_prompt": image_prompt,
+            "sources": ["Web Search"],
+            "created_at": time.time(),
+            "status": "completed"
+        }
+        
+        # Save to cache
+        cache.save_topic(topic_data)
+        cache.set(f"result_{generation_id}", topic_data)
+        
+        # Also update progress
+        cache.set(f"progress_{generation_id}", topic_data)
+        
+        return topic_data
+        
+    except Exception as e:
+        logger.error(f"Error in topic generation: {str(e)}")
+        error_data = {
+            "status": "error",
+            "error": str(e),
+            "topic": topic,
+            "timestamp": time.time()
+        }
+        cache.set(f"progress_{generation_id}", error_data)
+        cache.set(f"result_{generation_id}", error_data)
+        raise
+
+async def _search_and_summarize_topic(topic: str) -> str:
+    """Search the web for information about a topic and generate a short and concise paragraph summary for a dentist audience. Include all source links."""
+    try:
+        # Use the existing summarizer with a special prompt for topic-based summarization
+        # This leverages the existing OpenAI integration with web search
+        return generate_summary(
+            article_title=f"Search results for: {topic}",
+            article_url=topic  # This will be used as context in the prompt
+        )
+    except Exception as e:
+        logger.error(f"Error in topic search and summarization: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to generate summary for topic: {str(e)}"
+        )

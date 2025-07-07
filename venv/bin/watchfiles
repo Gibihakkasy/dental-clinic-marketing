@@ -1,5 +1,5 @@
 #!/bin/sh
-'''exec' "/Users/gilangbintanghakkun/Documents/AI Project/ai-group-chat/venv/bin/python3.11" "$0" "$@"
+'''exec' "/Users/gilangbintanghakkun/Documents/AI Project/dental-clinic-marketing/venv/bin/python3.11" "$0" "$@"
 ' '''
 # -*- coding: utf-8 -*-
 import re

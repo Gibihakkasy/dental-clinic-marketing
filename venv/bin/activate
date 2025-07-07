@@ -35,7 +35,7 @@ deactivate () {
 # unset irrelevant variables
 deactivate nondestructive
 
-VIRTUAL_ENV='/Users/gilangbintanghakkun/Documents/AI Project/ai-group-chat/venv'
+VIRTUAL_ENV='/Users/gilangbintanghakkun/Documents/AI Project/dental-clinic-marketing/venv'
 export VIRTUAL_ENV
 
 _OLD_VIRTUAL_PATH="$PATH"
