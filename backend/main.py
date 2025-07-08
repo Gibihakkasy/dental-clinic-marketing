@@ -62,6 +62,21 @@ class TopicListItem(BaseModel):
 class ImageGenerationRequest(BaseModel):
     prompt: str
     force_regenerate: bool = False
+    article_link: Optional[str] = None
+
+@app.post("/check_cached_image")
+def check_cached_image(request: ImageGenerationRequest):
+    """
+    Check if an image exists in cache for the given prompt without generating a new one.
+    Returns the cached image URL if found, or None if not found.
+    """
+    try:
+        cache_key = f"image_gpt:{request.prompt.strip()}"
+        cached_url = cache.get(cache_key)
+        return {"image_url": cached_url, "from_cache": cached_url is not None}
+    except Exception as e:
+        logger.error(f"Error in check_cached_image: {str(e)}")
+        return {"image_url": None, "from_cache": False, "error": str(e)}
 
 @app.post("/generate_image_gpt")
 def generate_image_gpt(request: ImageGenerationRequest):

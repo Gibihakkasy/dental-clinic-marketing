@@ -42,4 +42,4 @@ def generate_summary(article_title: str, article_url: str) -> str:
         
     except Exception as e:
         logger.error(f"Failed to generate summary for article {article_title}: {str(e)}")
-        return "(Summary generation failed)" 
+        return "(Summary generation failed)"

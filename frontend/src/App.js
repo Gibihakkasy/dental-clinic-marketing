@@ -323,19 +323,27 @@ function App() {
         }
         setProgress(newProgress);
 
-        // Prefetch and set cached image URLs for each article
+        // Check for cached images for each article
         newProgress.forEach(async (item, idx) => {
           if (item.imagePrompt) {
-            const imageUrl = await fetchCachedImageUrl(item.imagePrompt);
-            if (imageUrl) {
-              setProgress(prev => {
-                const updated = [...prev];
-                updated[idx].imageUrl = imageUrl;
-                return updated;
+            try {
+              const response = await axios.post("http://localhost:8000/check_cached_image", {
+                prompt: item.imagePrompt,
+                article_link: item.article_link
               });
+              if (response.data.image_url) {
+                setProgress(prev => {
+                  const updated = [...prev];
+                  updated[idx].imageUrl = response.data.image_url;
+                  return updated;
+                });
+              }
+            } catch (err) {
+              console.error("Error checking for cached image:", err);
             }
           }
         });
+
 
         setFilename(resp.data.file);
       } else {
@@ -553,17 +561,24 @@ function App() {
       }));
       
       setProgress(newProgress);
-
-      // Prefetch and set cached image URLs for each topic
+      
+      // Check for cached images for each topic
       newProgress.forEach(async (item, idx) => {
         if (item.imagePrompt) {
-          const imageUrl = await fetchCachedImageUrl(item.imagePrompt);
-          if (imageUrl) {
-            setProgress(prev => {
-              const updated = [...prev];
-              updated[idx].imageUrl = imageUrl;
-              return updated;
+          try {
+            const response = await axios.post("http://localhost:8000/check_cached_image", {
+              prompt: item.imagePrompt,
+              article_link: item.article_link
             });
+            if (response.data.image_url) {
+              setProgress(prev => {
+                const updated = [...prev];
+                updated[idx].imageUrl = response.data.image_url;
+                return updated;
+              });
+            }
+          } catch (err) {
+            console.error("Error checking for cached image:", err);
           }
         }
       });
