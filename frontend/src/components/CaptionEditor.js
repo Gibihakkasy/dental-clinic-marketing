@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Textarea, VStack } from '@chakra-ui/react';
 
 const CaptionEditor = ({ 
@@ -7,11 +7,20 @@ const CaptionEditor = ({
 }) => {
   const [editedCaption, setEditedCaption] = useState(caption);
   const [saveTimeout, setSaveTimeout] = useState(null);
+  const textareaRef = useRef(null);
 
   // Update local state when caption prop changes
   useEffect(() => {
     setEditedCaption(caption);
   }, [caption]);
+
+  // Auto-resize textarea based on content
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = textareaRef.current.scrollHeight + 'px';
+    }
+  }, [editedCaption]);
 
   // Auto-save after user stops typing for 500ms
   const handleCaptionChange = useCallback((e) => {
@@ -41,12 +50,16 @@ const CaptionEditor = ({
   return (
     <VStack align="stretch" spacing={4} mt={2}>
       <Textarea
+        ref={textareaRef}
         value={editedCaption}
         onChange={handleCaptionChange}
-        minH="100px"
+        minH="60px"
+        maxH="400px"
+        overflow="auto"
         placeholder="Edit your caption here..."
         size="sm"
         bg="white"
+        resize="none"
       />
     </VStack>
   );

@@ -17,7 +17,7 @@ def generate_caption(summary: str) -> str:
         client = get_openai_client()
         
         caption_prompt = (
-            f"Given this summary of a dental news article, write a highly engaging Instagram caption for a dental clinic's Indonesian patients in Bahasa Indonesia. Don't use em-dashes. Always include call to action. \n"
+            f"Given this summary of a dental news article, write a highly engaging Instagram caption for a dental clinic's Indonesian patients in Bahasa Indonesia. Don't use em-dashes. Always include call to action, popular hashtags, and moderate amount of emojis. never offer anything free.\n"
             f"Summary: {summary}\n"
         )
         

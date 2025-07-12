@@ -26,9 +26,11 @@ import {
   Tab,
   TabPanel,
   Input,
-  IconButton
+  IconButton,
+  Collapse,
+  Icon
 } from '@chakra-ui/react';
-import { DeleteIcon, RepeatIcon } from '@chakra-ui/icons';
+import { DeleteIcon, RepeatIcon, ChevronDownIcon, ChevronRightIcon } from '@chakra-ui/icons';
 import { FaInstagram } from 'react-icons/fa';
 import axios from 'axios';
 import CaptionEditor from './components/CaptionEditor';
@@ -107,6 +109,11 @@ function App() {
   const [customTopic, setCustomTopic] = useState('');
   const [topicGenerationId, setTopicGenerationId] = useState(null);
   const [isGeneratingTopic, setIsGeneratingTopic] = useState(false);
+  
+  // Expand/collapse states
+  const [expandedFeeds, setExpandedFeeds] = useState({});
+  const [expandedTopics, setExpandedTopics] = useState(false);
+  const [expandedContent, setExpandedContent] = useState({});
   
   const { isOpen, onClose } = useDisclosure();
   const toast = useToast();
@@ -202,6 +209,22 @@ function App() {
     } else {
       setSelected(prev => prev.filter(s => !(s.feed_url === feed_url && s.article_link === article_link)));
     }
+  };
+
+  // Toggle feed expansion
+  const toggleFeedExpansion = (feedUrl) => {
+    setExpandedFeeds(prev => ({
+      ...prev,
+      [feedUrl]: !prev[feedUrl]
+    }));
+  };
+
+  // Toggle content expansion
+  const toggleContentExpansion = (articleLink) => {
+    setExpandedContent(prev => ({
+      ...prev,
+      [articleLink]: !prev[articleLink]
+    }));
   };
 
   // Regenerate summary for article or topic
@@ -636,17 +659,39 @@ function App() {
                   <VStack align="stretch" spacing={4} mb={6} divider={<Divider />}>
                     {groupedArticles.map((feed, fidx) => (
                       <Box key={fidx} textAlign="left">
-                        <Text fontWeight="bold" color="teal.700" mb={2}>{feed.feed_title}</Text>
-                        {feed.articles.map((a, idx) => (
-                          <Box key={a.link} mb={1}>
-                            <Checkbox
-                              isChecked={selected.some(s => s.feed_url === feed.feed_url && s.article_link === a.link)}
-                              onChange={e => handleSelect(feed.feed_url, a.link, e.target.checked, a.title)}
-                            >
-                              <Link href={a.link} color="blue.500" isExternal>{a.title}</Link>
-                            </Checkbox>
+                        <Flex 
+                          align="center" 
+                          justify="space-between" 
+                          cursor="pointer"
+                          onClick={() => toggleFeedExpansion(feed.feed_url)}
+                          _hover={{ bg: 'gray.50' }}
+                          p={2}
+                          borderRadius="md"
+                        >
+                          <HStack>
+                            <Icon 
+                              as={expandedFeeds[feed.feed_url] ? ChevronDownIcon : ChevronRightIcon}
+                              color="teal.500"
+                            />
+                            <Text fontWeight="bold" color="teal.700">
+                              {feed.feed_title} ({feed.articles.length} articles)
+                            </Text>
+                          </HStack>
+                        </Flex>
+                        <Collapse in={expandedFeeds[feed.feed_url]} animateOpacity>
+                          <Box ml={6} mt={2}>
+                            {feed.articles.map((a, idx) => (
+                              <Box key={a.link} mb={1}>
+                                <Checkbox
+                                  isChecked={selected.some(s => s.feed_url === feed.feed_url && s.article_link === a.link)}
+                                  onChange={e => handleSelect(feed.feed_url, a.link, e.target.checked, a.title)}
+                                >
+                                  <Link href={a.link} color="blue.500" isExternal>{a.title}</Link>
+                                </Checkbox>
+                              </Box>
+                            ))}
                           </Box>
-                        ))}
+                        </Collapse>
                       </Box>
                     ))}
                   </VStack>
@@ -692,71 +737,93 @@ function App() {
               </Box>
               
               <Box borderWidth={1} borderRadius="md" p={4} mb={4} maxH="300px" overflowY="auto">
-                {topics.length > 0 ? (
-                  <VStack align="stretch" spacing={2}>
-                    {topics.map((topic) => (
-                      <Box 
-                        key={topic.id}
-                        borderWidth={1} 
-                        borderRadius="md" 
-                        p={3}
-                        bg={selectedTopics.includes(topic.id) ? 'teal.50' : 'white'}
-                        borderColor={selectedTopics.includes(topic.id) ? 'teal.200' : 'gray.200'}
-                        cursor="pointer"
-                        _hover={{ bg: selectedTopics.includes(topic.id) ? 'teal.100' : 'gray.50' }}
-                        onClick={() => handleTopicSelect(topic.id, !selectedTopics.includes(topic.id))}
-                      >
-                        <Flex justify="space-between" align="center">
-                          <Box flex="1" textAlign="left">
-                            <HStack>
-                              <Checkbox 
-                                isChecked={selectedTopics.includes(topic.id)}
-                                onChange={(e) => {
+                <Flex 
+                  align="center" 
+                  justify="space-between" 
+                  cursor="pointer"
+                  onClick={() => setExpandedTopics(!expandedTopics)}
+                  _hover={{ bg: 'gray.50' }}
+                  p={2}
+                  borderRadius="md"
+                  mb={2}
+                >
+                  <HStack>
+                    <Icon 
+                      as={expandedTopics ? ChevronDownIcon : ChevronRightIcon}
+                      color="teal.500"
+                    />
+                    <Text fontWeight="bold" color="teal.700">
+                      Past Topics ({topics.length})
+                    </Text>
+                  </HStack>
+                </Flex>
+                <Collapse in={expandedTopics} animateOpacity>
+                  {topics.length > 0 ? (
+                    <VStack align="stretch" spacing={2}>
+                      {topics.map((topic) => (
+                        <Box 
+                          key={topic.id}
+                          borderWidth={1} 
+                          borderRadius="md" 
+                          p={3}
+                          bg={selectedTopics.includes(topic.id) ? 'teal.50' : 'white'}
+                          borderColor={selectedTopics.includes(topic.id) ? 'teal.200' : 'gray.200'}
+                          cursor="pointer"
+                          _hover={{ bg: selectedTopics.includes(topic.id) ? 'teal.100' : 'gray.50' }}
+                          onClick={() => handleTopicSelect(topic.id, !selectedTopics.includes(topic.id))}
+                        >
+                          <Flex justify="space-between" align="center">
+                            <Box flex="1" textAlign="left">
+                              <HStack>
+                                <Checkbox 
+                                  isChecked={selectedTopics.includes(topic.id)}
+                                  onChange={(e) => {
+                                    e.stopPropagation();
+                                    handleTopicSelect(topic.id, e.target.checked);
+                                  }}
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <Text fontWeight="medium">{topic.topic}</Text>
+                                </Checkbox>
+                              </HStack>
+                              <Text fontSize="sm" color="gray.600" mt={1} noOfLines={1}>
+                                {topic.preview}
+                              </Text>
+                              <Text fontSize="xs" color="gray.500" mt={1}>
+                                {new Date(topic.created_at * 1000).toLocaleString()}
+                              </Text>
+                              <Button
+                                size="xs"
+                                colorScheme="blue"
+                                variant="outline"
+                                mt={2}
+                                onClick={e => {
                                   e.stopPropagation();
-                                  handleTopicSelect(topic.id, e.target.checked);
+                                  handleRegenerateSummary(null, topic, true);
                                 }}
-                                onClick={(e) => e.stopPropagation()}
+                                leftIcon={<RepeatIcon />}
                               >
-                                <Text fontWeight="medium">{topic.topic}</Text>
-                              </Checkbox>
-                            </HStack>
-                            <Text fontSize="sm" color="gray.600" mt={1} noOfLines={1}>
-                              {topic.preview}
-                            </Text>
-                            <Text fontSize="xs" color="gray.500" mt={1}>
-                              {new Date(topic.created_at * 1000).toLocaleString()}
-                            </Text>
-                            <Button
-                              size="xs"
-                              colorScheme="blue"
-                              variant="outline"
-                              mt={2}
-                              onClick={e => {
-                                e.stopPropagation();
-                                handleRegenerateSummary(null, topic, true);
-                              }}
-                              leftIcon={<RepeatIcon />}
-                            >
-                              Regenerate Summary
-                            </Button>
-                          </Box>
-                          <IconButton
-                            icon={<DeleteIcon />}
-                            size="sm"
-                            variant="ghost"
-                            colorScheme="red"
-                            aria-label="Delete topic"
-                            onClick={(e) => handleDeleteTopic(topic.id, e)}
-                          />
-                        </Flex>
-                      </Box>
-                    ))}
-                  </VStack>
-                ) : (
-                  <Text color="gray.500" textAlign="center" py={4}>
-                    No topics yet. Enter a topic above to get started.
-                  </Text>
-                )}
+                                Regenerate Summary
+                              </Button>
+                            </Box>
+                            <IconButton
+                              icon={<DeleteIcon />}
+                              size="sm"
+                              variant="ghost"
+                              colorScheme="red"
+                              aria-label="Delete topic"
+                              onClick={(e) => handleDeleteTopic(topic.id, e)}
+                            />
+                          </Flex>
+                        </Box>
+                      ))}
+                    </VStack>
+                  ) : (
+                    <Text color="gray.500" textAlign="center" py={4}>
+                      No topics yet. Enter a topic above to get started.
+                    </Text>
+                  )}
+                </Collapse>
               </Box>
               
               <Button
@@ -780,171 +847,213 @@ function App() {
             {error}
           </Text>
         )}
-        <Box textAlign="left" mt={6}>
-          {progress.map((p, idx) => (
-            <Box key={idx} mb={8} p={4} borderWidth={1} borderRadius={8} bg="white">
-              <Box mb={4}>
-                <Text fontSize="lg" fontWeight="bold" mb={2}>
-                  {p.title}
-                  {p.cache_status?.summary && (
-                    <Text as="span" fontSize="sm" color="gray.500" ml={2}>
-                      (from cache)
-                    </Text>
-                  )}
-                </Text>
-                <HStack spacing={2}>
-                  <FaInstagram color="#E1306C" />
-                  <Checkbox
-                    colorScheme="pink"
-                    isChecked={selectedForInstagram[p.article_link] || false}
-                    onChange={(e) => {
-                      setSelectedForInstagram(prev => ({
-                        ...prev,
-                        [p.article_link]: e.target.checked
-                      }));
-                    }}
-                    colorScheme="pink"
+        
+        {/* Generated Content Section */}
+        {progress.length > 0 && (
+          <Box mt={6}>
+            <Text fontWeight="bold" color="teal.700" fontSize="xl" mb={4}>
+              Generated Content ({progress.length} items)
+            </Text>
+            <Box textAlign="left">
+              {progress.map((p, idx) => (
+                <Box key={idx} mb={8} borderWidth={1} borderRadius={8} bg="white">
+                  <Flex
+                    align="center"
+                    justify="space-between"
+                    cursor="pointer"
+                    onClick={() => toggleContentExpansion(p.article_link)}
+                    _hover={{ bg: 'gray.50' }}
+                    p={3}
+                    borderTopRadius={8}
                   >
-                    Post this caption
-                  </Checkbox>
-                </HStack>
-              </Box>
-              {p.summary && (
-                <Box mb={4} p={4} borderWidth={1} borderRadius="md" bg="gray.50">
-                  <HStack justify="space-between" mb={2}>
-                    <Text fontWeight="bold">
-                      Summary:
+                    <HStack>
+                      <Icon
+                        as={expandedContent[p.article_link] ? ChevronDownIcon : ChevronRightIcon}
+                        color="teal.500"
+                      />
+                      <Text fontWeight="bold" color="teal.700">
+                        {p.title}
+                      </Text>
                       {p.cache_status?.summary && (
                         <Text as="span" fontSize="sm" color="gray.500" ml={2}>
                           (from cache)
                         </Text>
                       )}
-                    </Text>
-                    <Button
-                      size="xs"
-                      colorScheme="blue"
-                      variant="outline"
-                      onClick={() => handleRegenerateSummary(idx, p)}
-                      isLoading={p.isRegenerating?.summary}
-                      loadingText="Regenerating..."
-                      leftIcon={<RepeatIcon />}
-                    >
-                      Regenerate
-                    </Button>
-                  </HStack>
-                  <FormattedText text={p.summary} />
-                </Box>
-              )}
-              {p.caption && (
-                <Box mb={4} p={4} borderWidth={1} borderRadius="md" bg="gray.50">
-                  <HStack justify="space-between" mb={2}>
-                    <Text fontWeight="bold">
-                      IG Caption:
-                      {p.cache_status?.caption && (
-                        <Text as="span" fontSize="sm" color="gray.500" ml={2}>
-                          (from cache)
-                        </Text>
-                      )}
-                    </Text>
-                    <Button
-                      size="xs"
-                      colorScheme="blue"
-                      variant="outline"
-                      onClick={() => handleRegenerate(idx, 'caption')}
-                      isLoading={p.isRegenerating?.caption}
-                      loadingText="Regenerating..."
-                      leftIcon={<RepeatIcon />}
-                    >
-                      Regenerate
-                    </Button>
-                  </HStack>
-                  <CaptionEditor 
-                    caption={p.caption}
-                    onSave={(newCaption) => {
-                      const updatedProgress = [...progress];
-                      updatedProgress[idx].caption = newCaption;
-                      updatedProgress[idx].cache_status = {
-                        ...updatedProgress[idx].cache_status,
-                        caption: false // User edited content is not from cache
-                      };
-                      setProgress(updatedProgress);
-                    }}
-                  />
-                </Box>
-              )}
-              {p.imagePrompt && (
-                <Box mt={4} p={4} borderWidth={1} borderRadius="md" bg="gray.50">
-                  <HStack justify="space-between" mb={2}>
-                    <Text fontWeight="bold">
-                      Image Prompt:
-                      {p.cache_status?.imagePrompt && (
-                        <Text as="span" fontSize="sm" color="gray.500" ml={2}>
-                          (from cache)
-                        </Text>
-                      )}
-                    </Text>
-                    <Button
-                      size="xs"
-                      colorScheme="blue"
-                      variant="outline"
-                      onClick={() => handleRegenerate(idx, 'imagePrompt')}
-                      isLoading={p.isRegenerating?.imagePrompt}
-                      loadingText="Regenerating..."
-                      leftIcon={<RepeatIcon />}
-                    >
-                      Regenerate
-                    </Button>
-                  </HStack>
-                  <Textarea
-                    value={p.imagePrompt}
-                    onChange={(e) => {
-                      const updatedProgress = [...progress];
-                      updatedProgress[idx].imagePrompt = e.target.value;
-                      updatedProgress[idx].cache_status = {
-                        ...updatedProgress[idx].cache_status,
-                        imagePrompt: false // User edited content is not from cache
-                      };
-                      setProgress(updatedProgress);
-                    }}
-                    minH="100px"
-                    size="sm"
-                    bg="white"
-                  />
-                  <Box mt={4}>
-                    {p.imageUrl ? (
-                      <Box>
-                        <img src={p.imageUrl} alt="Generated visual" style={{ maxWidth: '100%', borderRadius: 8, marginBottom: 8 }} />
-                        <Button
-                          size="xs"
-                          colorScheme="teal"
-                          variant="outline"
-                          isLoading={p.isGeneratingImage}
-                          loadingText="Generating..."
-                          onClick={() => handleGenerateImageGPT(idx, true)}
-                          mt={2}
-                        >
-                          Regenerate Image (GPT)
-                        </Button>
+                    </HStack>
+                  </Flex>
+                  <Collapse in={!!expandedContent[p.article_link]} animateOpacity>
+                    <Box p={4}>
+                      {/* The rest of the generated content UI for this item goes here */}
+                      <Box mb={4}>
+                        <HStack spacing={2}>
+                          <Checkbox
+                            isChecked={selectedForInstagram[p.article_link] || false}
+                            onChange={(e) => {
+                              setSelectedForInstagram(prev => ({
+                                ...prev,
+                                [p.article_link]: e.target.checked
+                              }));
+                            }}
+                          >
+                          </Checkbox>
+                          <FaInstagram color="#E1306C" />
+                        </HStack>
                       </Box>
-                    ) : (
-                      <Button
-                        size="xs"
-                        colorScheme="teal"
-                        variant="outline"
-                        isLoading={p.isGeneratingImage}
-                        loadingText="Generating..."
-                        onClick={() => handleGenerateImageGPT(idx)}
-                        mt={2}
-                      >
-                        Generate Image (GPT)
-                      </Button>
-                    )}
-                  </Box>
+                      {p.summary && (
+                        <Box mb={4} p={4} borderWidth={1} borderRadius="md" bg="gray.50">
+                          <HStack justify="space-between" mb={2}>
+                            <Text fontWeight="bold">
+                              Summary:
+                              {p.cache_status?.summary && (
+                                <Text as="span" fontSize="sm" color="gray.500" ml={2}>
+                                  (from cache)
+                                </Text>
+                              )}
+                            </Text>
+                            <Button
+                              size="xs"
+                              colorScheme="blue"
+                              variant="outline"
+                              onClick={() => handleRegenerateSummary(idx, p)}
+                              isLoading={p.isRegenerating?.summary}
+                              loadingText="Regenerating..."
+                              leftIcon={<RepeatIcon />}
+                            >
+                              Regenerate
+                            </Button>
+                          </HStack>
+                          <FormattedText text={p.summary} />
+                        </Box>
+                      )}
+                      {p.caption && (
+                        <Box mb={4} p={4} borderWidth={1} borderRadius="md" bg="gray.50">
+                          <HStack justify="space-between" mb={2}>
+                            <Text fontWeight="bold">
+                              IG Caption:
+                              {p.cache_status?.caption && (
+                                <Text as="span" fontSize="sm" color="gray.500" ml={2}>
+                                  (from cache)
+                                </Text>
+                              )}
+                            </Text>
+                            <Button
+                              size="xs"
+                              colorScheme="blue"
+                              variant="outline"
+                              onClick={() => handleRegenerate(idx, 'caption')}
+                              isLoading={p.isRegenerating?.caption}
+                              loadingText="Regenerating..."
+                              leftIcon={<RepeatIcon />}
+                            >
+                              Regenerate
+                            </Button>
+                          </HStack>
+                          <CaptionEditor
+                            caption={p.caption}
+                            onSave={(newCaption) => {
+                              const updatedProgress = [...progress];
+                              updatedProgress[idx].caption = newCaption;
+                              updatedProgress[idx].cache_status = {
+                                ...updatedProgress[idx].cache_status,
+                                caption: false // User edited content is not from cache
+                              };
+                              setProgress(updatedProgress);
+                            }}
+                          />
+                        </Box>
+                      )}
+                      {p.imagePrompt && (
+                        <Box mt={4} p={4} borderWidth={1} borderRadius="md" bg="gray.50">
+                          <HStack justify="space-between" mb={2}>
+                            <Text fontWeight="bold">
+                              Image Prompt:
+                              {p.cache_status?.imagePrompt && (
+                                <Text as="span" fontSize="sm" color="gray.500" ml={2}>
+                                  (from cache)
+                                </Text>
+                              )}
+                            </Text>
+                            <Button
+                              size="xs"
+                              colorScheme="blue"
+                              variant="outline"
+                              onClick={() => handleRegenerate(idx, 'imagePrompt')}
+                              isLoading={p.isRegenerating?.imagePrompt}
+                              loadingText="Regenerating..."
+                              leftIcon={<RepeatIcon />}
+                            >
+                              Regenerate
+                            </Button>
+                          </HStack>
+                          <Textarea
+                            value={p.imagePrompt}
+                            onChange={(e) => {
+                              const updatedProgress = [...progress];
+                              updatedProgress[idx].imagePrompt = e.target.value;
+                              updatedProgress[idx].cache_status = {
+                                ...updatedProgress[idx].cache_status,
+                                imagePrompt: false // User edited content is not from cache
+                              };
+                              setProgress(updatedProgress);
+                              // Auto-resize textarea
+                              const textarea = e.target;
+                              textarea.style.height = 'auto';
+                              textarea.style.height = textarea.scrollHeight + 'px';
+                            }}
+                            onFocus={(e) => {
+                              // Auto-resize on focus
+                              const textarea = e.target;
+                              textarea.style.height = 'auto';
+                              textarea.style.height = textarea.scrollHeight + 'px';
+                            }}
+                            minH="60px"
+                            maxH="400px"
+                            overflow="auto"
+                            size="sm"
+                            bg="white"
+                            resize="none"
+                            placeholder="Image prompt for AI generation..."
+                          />
+                          <Box mt={4}>
+                            {p.imageUrl ? (
+                              <Box>
+                                <img src={p.imageUrl} alt="Generated visual" style={{ maxWidth: '100%', borderRadius: 8, marginBottom: 8 }} />
+                                <Button
+                                  size="xs"
+                                  colorScheme="teal"
+                                  variant="outline"
+                                  isLoading={p.isGeneratingImage}
+                                  loadingText="Generating..."
+                                  onClick={() => handleGenerateImageGPT(idx, true)}
+                                  mt={2}
+                                >
+                                  Regenerate Image (GPT)
+                                </Button>
+                              </Box>
+                            ) : (
+                              <Button
+                                size="xs"
+                                colorScheme="teal"
+                                variant="outline"
+                                isLoading={p.isGeneratingImage}
+                                loadingText="Generating..."
+                                onClick={() => handleGenerateImageGPT(idx)}
+                                mt={2}
+                              >
+                                Generate Image (GPT)
+                              </Button>
+                            )}
+                          </Box>
+                        </Box>
+                      )}
+                    </Box>
+                  </Collapse>
                 </Box>
-              )}
+              ))}
             </Box>
-          ))}
-        </Box>
+          </Box>
+        )}
+        
         {allDone && (
           <HStack spacing={4} mt={4} justify="center">
             {filename && (
