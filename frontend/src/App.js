@@ -35,6 +35,7 @@ import { FaInstagram } from 'react-icons/fa';
 import axios from 'axios';
 import CaptionEditor from './components/CaptionEditor';
 import { FormattedText } from './utils/formatText';
+import TextareaAutosize from 'react-textarea-autosize';
 
 function App() {
   // Helper to fetch cached image URL for a prompt
@@ -985,7 +986,7 @@ function App() {
                               Regenerate
                             </Button>
                           </HStack>
-                          <Textarea
+                          <TextareaAutosize
                             value={p.imagePrompt}
                             onChange={(e) => {
                               const updatedProgress = [...progress];
@@ -995,23 +996,9 @@ function App() {
                                 imagePrompt: false // User edited content is not from cache
                               };
                               setProgress(updatedProgress);
-                              // Auto-resize textarea
-                              const textarea = e.target;
-                              textarea.style.height = 'auto';
-                              textarea.style.height = textarea.scrollHeight + 'px';
                             }}
-                            onFocus={(e) => {
-                              // Auto-resize on focus
-                              const textarea = e.target;
-                              textarea.style.height = 'auto';
-                              textarea.style.height = textarea.scrollHeight + 'px';
-                            }}
-                            minH="60px"
-                            maxH="400px"
-                            overflow="auto"
-                            size="sm"
-                            bg="white"
-                            resize="none"
+                            minRows={3}
+                            style={{ width: '100%', fontSize: '1rem', background: 'white', borderRadius: 6, border: '1px solid #CBD5E0', padding: 8, resize: 'none' }}
                             placeholder="Image prompt for AI generation..."
                           />
                           <Box mt={4}>
